@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#000000">
+    <title>Find Stream - Live Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #000000; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+        .sidebar { background-color: #0a0a0f; }
+        .nav-item { transition: all 0.2s; }
+        .nav-item:hover { background-color: #1a1a24; }
+        .nav-item.active { background-color: #151520; border-left: 2px solid #7c3aed; }
+        .status-online { background-color: #22c55e; }
+        .status-offline { background-color: #ef4444; }
+        .status-pending { background-color: #f97316; }
+        .badge { background-color: #1f1f2e; color: #6b7280; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        .tri-pill { position: relative; display: flex; background: #12121a; border: 1px solid #1f2937; border-radius: 50px; width: 120px; height: 46px; padding: 4px; align-items: center; cursor: pointer; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+        .tri-pill input { display: none; }
+        .tri-pill label { flex: 1; z-index: 2; text-align: center; color: #6b7280; font-weight: bold; font-size: 0.875rem; cursor: pointer; transition: color 0.3s; }
+        .pill-cursor { position: absolute; width: 54px; height: 36px; background: #7c3aed; border-radius: 50px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 1; }
+        #tri-az:checked ~ .pill-cursor { transform: translateX(0); }
+        #tri-star:checked ~ .pill-cursor { transform: translateX(56px); }
+        #tri-az:checked ~ label[for="tri-az"], #tri-star:checked ~ label[for="tri-star"] { color: white; }
+        .fade-in { animation: fadeIn 0.3s ease forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .glass { backdrop-filter: blur(10px); background: rgba(30, 30, 30, 0.4); border: 1px solid rgba(255,255,255,0.05); }
+        .site-card { transition: all 0.15s ease; }
+        .site-card:hover { transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0,0,0,0.4); background: rgba(40, 40, 40, 0.6); border-color: rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="flex min-h-screen">
+
+    <div id="mobile-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/80 z-40 hidden md:hidden backdrop-blur-sm"></div>
+
+    <aside id="sidebar" class="sidebar fixed md:sticky top-0 h-screen w-64 flex flex-col border-r border-gray-800 z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300">
+        <div class="p-6 border-b border-gray-800 flex justify-between items-center">
+            <h1 class="text-2xl font-black tracking-wider text-white">Find<span class="text-purple-500">Stream</span></h1>
+            <button onclick="toggleSidebar()" class="md:hidden text-gray-400 hover:text-white">✕</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-6">
+            <div>
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 px-2">Catalogues</h3>
+                <ul class="space-y-1">
+                    <li onclick="changerFiltre('tous', this)" class="nav-item active rounded-lg flex justify-between items-center p-2 cursor-pointer">
+                        <div class="flex items-center space-x-3"><span class="w-2 h-2 rounded-full bg-purple-500"></span><span class="text-gray-200 text-sm">Tous les sites</span></div>
+                        <span class="badge" id="count-total">0</span>
+                    </li>
+                    <li onclick="changerFiltre('favoris', this)" class="nav-item rounded-lg flex justify-between items-center p-2 cursor-pointer">
+                        <div class="flex items-center space-x-3"><span class="w-2 h-2 rounded-full bg-yellow-400"></span><span class="text-gray-200 text-sm">Favoris</span></div>
+                        <span class="badge" id="count-favoris">0</span>
+                    </li>
+                    <li onclick="changerFiltre('films', this)" class="nav-item rounded-lg flex justify-between items-center p-2 cursor-pointer">
+                        <div class="flex items-center space-x-3"><span class="w-2 h-2 rounded-full bg-gray-600"></span><span class="text-gray-400 text-sm">Films & Séries</span></div>
+                        <span class="badge" id="count-films">0</span>
+                    </li>
+                    <li onclick="changerFiltre('animes', this)" class="nav-item rounded-lg flex justify-between items-center p-2 cursor-pointer">
+                        <div class="flex items-center space-x-3"><span class="w-2 h-2 rounded-full bg-gray-600"></span><span class="text-gray-400 text-sm">Animés</span></div>
+                        <span class="badge" id="count-animes">0</span>
+                    </li>
+                </ul>
+            </div>
+            <div>
+                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 px-2">Statut</h3>
+                <ul class="space-y-1">
+                    <li onclick="changerFiltre('online', this)" class="nav-item rounded-lg flex justify-between items-center p-2 cursor-pointer">
+                        <div class="flex items-center space-x-3"><span class="w-2 h-2 rounded-full bg-green-500"></span><span class="text-gray-300 text-sm">En ligne</span></div>
+                        <span class="badge" id="count-online">0</span>
+                    </li>
+                    <li onclick="changerFiltre('offline', this)" class="nav-item rounded-lg flex justify-between items-center p-2 cursor-pointer">
+                        <div class="flex items-center space-x-3"><span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-gray-300 text-sm">Hors ligne</span></div>
+                        <span class="badge" id="count-offline">0</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col min-w-0 bg-[#000000]">
+        <header class="md:hidden flex items-center justify-between p-4 sticky top-0 bg-black/80 backdrop-blur-md border-b border-gray-800 z-30">
+            <button onclick="toggleSidebar()" class="text-gray-300 hover:text-white focus:outline-none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+            </button>
+            <h1 class="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">Find Stream</h1>
+            <div class="w-6"></div> 
+        </header>
+
+        <div class="p-6 md:p-10 max-w-4xl w-full mx-auto flex flex-col">
+            <div class="flex flex-col sm:flex-row gap-4 mb-8 relative z-20">
+                <div class="relative flex-1 flex items-center">
+                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                    <input type="text" id="search-input" oninput="rechercheDebounce()" placeholder="Rechercher un site..." 
+                           class="w-full bg-[#12121a] border border-gray-800 text-white rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition shadow-sm h-[46px]">
+                </div>
+
+                <div class="flex justify-center sm:justify-end items-center shrink-0">
+                    <div class="tri-pill">
+                        <input type="radio" name="tri" id="tri-az" value="az" checked onchange="changerTri(this.value)">
+                        <label for="tri-az">A-Z</label>
+
+                        <input type="radio" name="tri" id="tri-star" value="star" onchange="changerTri(this.value)">
+                        <label for="tri-star">Etoile</label>
+
+                        <div class="pill-cursor"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="content">
+                <p class="text-center text-gray-500 mt-10 animate-pulse">Chargement de la base de données...</p>
+            </div>
+            
+            <div id="scroll-sentinel" class="h-10 mt-4"></div>
+        </div>
+    </main>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbyhXWiqjOZ--EAM0mItqB9-Jh0wyG28iKYN7-Nz61dxKSpDFhqmrb2swXjL0OxK4FVGjA/exec";
+        const CACHE_KEY = "findstream_data_cache";
+        const CACHE_DURATION = 12 * 60 * 60 * 1000; 
+        
+        let indexGlobal = []; 
+        let resultatsActuels = []; 
+        let modeDeTriActuel = 'az'; 
+        let filtreActuel = 'tous';
+        let limiteAffichage = 30;
+        
+        const searchInputDOM = document.getElementById('search-input');
+        let favoris = JSON.parse(localStorage.getItem("findstream_favoris") || "[]");
+        let fetchPromise = null; 
+
+        function escapeHTML(str) {
+            if(!str) return "";
+            return str.replace(/[&<>"']/g, m => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" })[m]);
+        }
+
+        function safeURL(url) {
+            try {
+                const parsed = new URL(url);
+                if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.href;
+            } catch (e) {}
+            return "#";
+        }
+
+        function debounce(fn, delay) {
+            let timer;
+            return (...args) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn(...args), delay);
+            }
+        }
+        const rechercheDebounce = debounce(appliquerFiltreEtTri, 200);
+
+        function copierURL(url, event) {
+            event.preventDefault();
+            navigator.clipboard.writeText(url).then(() => {
+                const btn = event.currentTarget;
+                const oldContent = btn.innerHTML;
+                btn.innerHTML = `<span class="text-green-500 text-xs font-bold">Copié</span>`;
+                setTimeout(() => btn.innerHTML = oldContent, 2000);
+            });
+        }
+
+        function toggleFavori(url, event) {
+            event.preventDefault(); 
+            const index = favoris.indexOf(url);
+            if(index > -1) favoris.splice(index, 1);
+            else favoris.push(url);
+            
+            localStorage.setItem("findstream_favoris", JSON.stringify(favoris));
+            mettreAJourCompteurs();
+            appliquerFiltreEtTri(); 
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('-translate-x-full');
+            document.getElementById('mobile-overlay').classList.toggle('hidden');
+        }
+
+        function changerFiltre(nouveauFiltre, element) {
+            filtreActuel = nouveauFiltre;
+            limiteAffichage = 30; 
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            if(element) element.classList.add('active');
+            
+            if(window.innerWidth < 768) toggleSidebar();
+            appliquerFiltreEtTri();
+        }
+
+        function changerTri(valeur) {
+            modeDeTriActuel = valeur;
+            limiteAffichage = 30; 
+            appliquerFiltreEtTri();
+        }
+
+        const scrollObserver = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && resultatsActuels.length > limiteAffichage) {
+                limiteAffichage += 30;
+                afficherSites(resultatsActuels);
+            }
+        }, { rootMargin: "100px" });
+        scrollObserver.observe(document.getElementById('scroll-sentinel'));
+        
+        function construireIndex(sitesBruts) {
+            indexGlobal = sitesBruts.map(site => {
+                const cat = (site.categorie || "").toLowerCase();
+                const stat = (site.statut || "");
+                const urlPropre = safeURL(site.url);
+                
+                let statutColor = "pending";
+                if (stat.includes("🟢") || stat.includes("🔄") || stat.includes("🔍")) statutColor = "online";
+                else if (stat.includes("🔴")) statutColor = "offline";
+
+                return {
+                    ...site,
+                    urlValide: urlPropre,
+                    _nomLower: (site.nom || "").toLowerCase(),
+                    _isAnime: cat.includes("anime"),
+                    _isOnline: statutColor === "online",
+                    _isOffline: statutColor === "offline",
+                    _statutColor: statutColor,
+                    _textePropre: escapeHTML(stat.replace(/[🟢🔴🔄🔍]/g, "").trim()),
+                    _visites: parseInt(site.visites) || parseInt(site.clics) || 0
+                };
+            });
+        }
+
+        async function chargerDonnees(forceRefresh = false) {
+            if (fetchPromise && !forceRefresh) return fetchPromise; 
+
+            try {
+                if (!forceRefresh) {
+                    const cache = localStorage.getItem(CACHE_KEY);
+                    if (cache) {
+                        const parsed = JSON.parse(cache);
+                        if (Date.now() - parsed.time < CACHE_DURATION) {
+                            construireIndex(parsed.data);
+                            mettreAJourCompteurs();
+                            appliquerFiltreEtTri();
+                            return;
+                        }
+                    }
+                }
+
+                fetchPromise = fetch(API_URL).then(r => r.json());
+                const json = await fetchPromise;
+                
+                if (json.succes && json.donnees.length > 0) {
+                    construireIndex(json.donnees);
+                    localStorage.setItem(CACHE_KEY, JSON.stringify({ time: Date.now(), data: json.donnees }));
+                    mettreAJourCompteurs();
+                    appliquerFiltreEtTri(); 
+                } else {
+                    document.getElementById('content').innerHTML = "<p class='text-center text-gray-500'>Aucun site trouvé.</p>";
+                }
+            } catch (erreur) {
+                const cache = localStorage.getItem(CACHE_KEY);
+                if (cache) {
+                    construireIndex(JSON.parse(cache).data);
+                    mettreAJourCompteurs();
+                    appliquerFiltreEtTri();
+                } else {
+                    document.getElementById('content').innerHTML = "<p class='text-red-500 text-center font-bold'>Serveur injoignable.</p>";
+                }
+            } finally {
+                fetchPromise = null;
+            }
+        }
+
+        function mettreAJourCompteurs() {
+            let stats = { total: indexGlobal.length, films: 0, animes: 0, online: 0, offline: 0 };
+            
+            indexGlobal.forEach(site => {
+                if (site._isAnime) stats.animes++; else stats.films++; 
+                if (site._isOnline) stats.online++; else if (site._isOffline) stats.offline++;
+            });
+
+            document.getElementById('count-total').innerText = stats.total;
+            document.getElementById('count-films').innerText = stats.films;
+            document.getElementById('count-animes').innerText = stats.animes;
+            document.getElementById('count-online').innerText = stats.online;
+            document.getElementById('count-offline').innerText = stats.offline;
+            document.getElementById('count-favoris').innerText = favoris.length;
+        }
+
+        function appliquerFiltreEtTri() {
+            const query = searchInputDOM.value.toLowerCase();
+            
+            resultatsActuels = indexGlobal.filter(site => {
+                if (filtreActuel === 'films' && site._isAnime) return false;
+                if (filtreActuel === 'animes' && !site._isAnime) return false;
+                if (filtreActuel === 'online' && !site._isOnline) return false;
+                if (filtreActuel === 'offline' && !site._isOffline) return false;
+                if (filtreActuel === 'favoris' && !favoris.includes(site.urlValide)) return false;
+
+                return site._nomLower.includes(query);
+            });
+
+            resultatsActuels.sort((a, b) => {
+                if (modeDeTriActuel === 'az') return a._nomLower.localeCompare(b._nomLower);
+                if (modeDeTriActuel === 'star') return b._visites - a._visites; 
+            });
+
+            afficherSites(resultatsActuels);
+        }
+
+        function afficherSites(donnees) {
+            const container = document.getElementById('content');
+            
+            if (donnees.length === 0) {
+                container.innerHTML = "<p class='text-center text-gray-500 mt-10 fade-in'>Aucun résultat trouvé.</p>";
+                return;
+            }
+
+            const sitesAffiches = donnees.slice(0, limiteAffichage);
+            const categories = { "Films & Séries": [], "Animes": [] };
+
+            sitesAffiches.forEach(site => {
+                if (site._isAnime) categories["Animes"].push(site);
+                else categories["Films & Séries"].push(site);
+            });
+
+            let htmlFinal = ""; 
+
+            Object.keys(categories).forEach(catKey => {
+                const sites = categories[catKey];
+                if (sites.length === 0) return;
+                
+                htmlFinal += `<section class="mb-10 fade-in"><h2 class="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4 ml-2">${catKey}</h2><div class="space-y-3">`;
+                
+                sites.forEach(site => {
+                    const nomPropre = escapeHTML(site.nom || "Inconnu");
+                    const initial = site.nom ? nomPropre.charAt(0).toUpperCase() : "?";
+                    const isFavori = favoris.includes(site.urlValide);
+                    const opacityClass = site._isOffline ? 'opacity-50 grayscale hover:grayscale-0' : '';
+
+                    let tagsHTML = '';
+                    if (site.tags) {
+                        site.tags.split(',').forEach(tag => {
+                            const cleanTag = escapeHTML(tag.trim());
+                            if(cleanTag) tagsHTML += `<span class="bg-gray-800 text-gray-300 text-[10px] font-bold px-2 py-0.5 rounded border border-gray-700 uppercase tracking-wider">${cleanTag}</span>`;
+                        });
+                    }
+
+                    htmlFinal += `
+                        <a href="${site.urlValide}" target="_blank" rel="noopener noreferrer" class="flex items-center justify-between group cursor-pointer ${opacityClass} glass site-card p-3 rounded-xl transition duration-200">
+                            <div class="flex items-center space-x-4 overflow-hidden">
+                                <div class="w-12 h-12 min-w-[48px] rounded-lg bg-gray-800 flex items-center justify-center text-xl font-black text-gray-300 group-hover:bg-gray-700 transition">${initial}</div>
+                                <div class="flex flex-col truncate pr-4">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="font-bold text-gray-100 group-hover:text-white transition truncate text-lg">${nomPropre}</span>
+                                        <div class="hidden sm:flex space-x-1">${tagsHTML}</div>
+                                    </div>
+                                    <span class="text-xs text-gray-500 truncate flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full status-${site._statutColor}"></span>
+                                        ${site._textePropre || "En attente"}
+                                    </span>
+                                    <div class="flex sm:hidden space-x-1 mt-1">${tagsHTML}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center space-x-2 sm:space-x-4 ml-2 z-10">
+                                <button onclick="copierURL('${site.urlValide}', event)" class="p-2 text-gray-500 hover:text-white transition" title="Copier le lien">📋</button>
+                                <button onclick="toggleFavori('${site.urlValide}', event)" class="p-2 transition focus:outline-none" title="Favoris">
+                                    <svg class="w-5 h-5 ${isFavori ? 'text-yellow-400 fill-current' : 'text-gray-500 hover:text-yellow-400'}" viewBox="0 0 24 24" stroke="currentColor" fill="${isFavori ? 'currentColor' : 'none'}"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>
+                                </button>
+                            </div>
+                        </a>
+                    `;
+                });
+                htmlFinal += `</div></section>`;
+            });
+
+            container.innerHTML = htmlFinal; 
+        }
+
+        chargerDonnees();
+    </script>
+</body>
+</html>

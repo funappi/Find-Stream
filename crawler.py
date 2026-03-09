@@ -19,6 +19,12 @@ SCORE_MINIMUM = 5  # Un site doit avoir des mots comme 'streaming' ou 'vf' pour 
 MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix']
 MOTS_STREAM = ['stream','film','serie','anime','episode','vostfr','vf','watch','movie','streaming']
 
+# Extensions de domaines autorisées (inclut les TLD classiques et ceux fréquents dans le streaming)
+EXTENSIONS_AUTORISEES = [
+    '.com', '.net', '.org', '.lol', '.xyz', '.site', '.tv', '.me', '.plus', '.best',
+    '.to', '.is', '.cc', '.sx', '.pe', '.ch', '.ws', '.ru', '.io', '.sh', '.ag', '.vip', '.pro'
+]
+
 # --- CONFIGURATION RÉSEAU ROBUSTE ---
 session = requests.Session()
 retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
@@ -45,12 +51,22 @@ def recuperer_sites_existants():
     return set()
 
 def url_valide(url):
-    """Vérifie si l'URL n'est pas dans la liste noire"""
+    """Vérifie si l'URL n'est pas dans la liste noire et possède une extension valide"""
     if not url or not url.startswith("http"):
         return False
+        
+    domaine = obtenir_domaine(url).lower()
+    
+    # Vérifie si l'extension du domaine est dans la liste blanche
+    if not any(domaine.endswith(ext) for ext in EXTENSIONS_AUTORISEES):
+        return False
+        
+    # Vérifie l'absence de mots interdits
+    url_lower = url.lower()
     for mot in MOTS_INTERDITS:
-        if mot in url.lower():
+        if mot in url_lower:
             return False
+            
     return True
 
 def evaluer_qualite_site(url):

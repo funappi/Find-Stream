@@ -17,6 +17,7 @@
         .status-pending { background-color: #f97316; }
         .badge { background-color: #1f1f2e; color: #6b7280; font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px; }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
+        
         .tri-pill { position: relative; display: flex; background: #12121a; border: 1px solid #1f2937; border-radius: 50px; width: 120px; height: 46px; padding: 4px; align-items: center; cursor: pointer; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
         .tri-pill input { display: none; }
         .tri-pill label { flex: 1; z-index: 2; text-align: center; color: #6b7280; font-weight: bold; font-size: 0.875rem; cursor: pointer; transition: color 0.3s; }
@@ -24,11 +25,37 @@
         #tri-az:checked ~ .pill-cursor { transform: translateX(0); }
         #tri-star:checked ~ .pill-cursor { transform: translateX(56px); }
         #tri-az:checked ~ label[for="tri-az"], #tri-star:checked ~ label[for="tri-star"] { color: white; }
+        
         .fade-in { animation: fadeIn 0.3s ease forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         .glass { backdrop-filter: blur(10px); background: rgba(30, 30, 30, 0.4); border: 1px solid rgba(255,255,255,0.05); }
         .site-card { transition: all 0.15s ease; }
         .site-card:hover { transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0,0,0,0.4); background: rgba(40, 40, 40, 0.6); border-color: rgba(255,255,255,0.1); }
+
+        /* Media Queries pour l'affichage mobile de la barre de recherche */
+        @media (max-width: 640px) {
+            .mobile-header-group {
+                flex-direction: row !important; /* Force l'affichage sur une ligne */
+                gap: 0.5rem !important; /* Réduit l'espace entre la barre et les boutons */
+            }
+            .search-input-mobile {
+                height: 40px !important; /* Réduit légèrement la hauteur */
+                font-size: 0.875rem !important; /* Texte plus petit */
+                padding-left: 2.5rem !important;
+            }
+            .tri-pill {
+                width: 100px; /* Réduit la largeur des boutons de tri */
+                height: 40px;
+            }
+            .tri-pill label {
+                font-size: 0.75rem; /* Texte des boutons plus petit */
+            }
+            .pill-cursor {
+                width: 44px; /* Ajuste le curseur violet */
+                height: 30px;
+            }
+            #tri-star:checked ~ .pill-cursor { transform: translateX(46px); } /* Ajuste le déplacement */
+        }
     </style>
 </head>
 <body class="flex min-h-screen">
@@ -88,15 +115,14 @@
         </header>
 
         <div class="p-6 md:p-10 max-w-4xl w-full mx-auto flex flex-col">
-            <div class="flex flex-col sm:flex-row gap-4 mb-8 relative z-20">
-                <div class="relative flex-1 flex items-center">
-                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <svg class="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div class="flex flex-col sm:flex-row gap-4 mb-8 relative z-20 mobile-header-group">
+                <div class="relative flex-1 flex items-center min-w-0"> <div class="absolute inset-y-0 left-0 pl-3 sm:pl-4 flex items-center pointer-events-none">
+                        <svg class="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                     </div>
                     <input type="text" id="search-input" oninput="rechercheDebounce()" placeholder="Rechercher un site..." 
-                           class="w-full bg-[#12121a] border border-gray-800 text-white rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition shadow-sm h-[46px]">
+                           class="w-full bg-[#12121a] border border-gray-800 text-white rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition shadow-sm h-[46px] search-input-mobile">
                 </div>
 
                 <div class="flex justify-center sm:justify-end items-center shrink-0">
@@ -372,4 +398,4 @@
         chargerDonnees();
     </script>
 </body>
-</html>
+</html> 

@@ -147,7 +147,7 @@
     </main>
 
     <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbyhXWiqjOZ--EAM0mItqB9-Jh0wyG28iKYN7-Nz61dxKSpDFhqmrb2swXjL0OxK4FVGjA/exec";
+        const API_URL = "URL google script";
         const CACHE_KEY = "findstream_data_cache";
         const CACHE_DURATION = 12 * 60 * 60 * 1000; 
         

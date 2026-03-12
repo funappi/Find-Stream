@@ -14,7 +14,7 @@ WEBHOOK_TOKEN = "MonSuperTokenSecret2026"
 MAX_SITES_ENVOYES = 20
 SCORE_MINIMUM = 5  # Exige au moins VF (3 pts) + HD (2 pts)
 
-MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix']
+MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix','X.com','Fsound','cloudflarestatus','cdn1.telesco']
 MOTS_STREAM = ['stream','film','serie','anime','episode','watch','movie','streaming']
 EXTENSIONS_AUTORISEES = ['.com', '.net', '.org', '.lol', '.xyz', '.site', '.tv', '.me', '.plus', '.best', '.to', '.is', '.cc', '.sx', '.pe', '.ch', '.ws', '.ru', '.io', '.sh', '.ag', '.vip', '.pro']
 

@@ -12,10 +12,12 @@ API_BASE_URL = "https://script.google.com/macros/s/AKfycbyhXWiqjOZ--EAM0mItqB9-J
 WEBHOOK_TOKEN = "MonSuperTokenSecret2026"
 
 MAX_SITES_ENVOYES = 20
-SCORE_MINIMUM = 5  # Exige au moins VF (3 pts) + HD (2 pts)
+SCORE_MINIMUM = 6  # Score exigeant (Garantit Vrai Stream + Qualité)
 
-MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix','X.com','Fsound','cloudflarestatus','cdn1.telesco']
-MOTS_STREAM = ['stream','film','serie','anime','episode','watch','movie','streaming']
+# Tout en minuscules impérativement pour le filtrage
+MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix','x.com','fsound','cloudflarestatus','cdn1.telesco','brave.com', 'captcha', 'bot', 'verify']
+MOTS_STREAM = ['stream','film','serie','anime','episode','watch','movie','streaming', 'saison']
+LECTEURS_VIDEO = ['iframe', 'vidoza', 'uqload', 'doodstream', 'mystream', 'uptobox', 'gounlimited', 'uptostream', 'embed']
 EXTENSIONS_AUTORISEES = ['.com', '.net', '.org', '.lol', '.xyz', '.site', '.tv', '.me', '.plus', '.best', '.to', '.is', '.cc', '.sx', '.pe', '.ch', '.ws', '.ru', '.io', '.sh', '.ag', '.vip', '.pro']
 
 # --- CONFIGURATION RÉSEAU ROBUSTE ---
@@ -27,17 +29,14 @@ session.mount('https://', adapter)
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
 def obtenir_domaine(url):
-    try:
-        return urlparse(url).netloc
-    except:
-        return ""
+    try: return urlparse(url).netloc
+    except: return ""
 
 def recuperer_sites_existants():
     try:
         r = session.get(API_BASE_URL, timeout=10)
         data = r.json()
-        if data.get("succes"):
-            return {site["url"].strip() for site in data["donnees"]}
+        if data.get("succes"): return {site["url"].strip() for site in data["donnees"]}
     except Exception as e:
         print(f"Note : Base de données inaccessible ({e})")
     return set()
@@ -52,28 +51,30 @@ def url_valide(url):
     return True
 
 def evaluer_et_tagger_site(url):
-    """Analyse le contenu du site, donne un score hybride et génère les tags"""
     try:
         r = session.get(url, headers=HEADERS, timeout=10)
         if r.status_code != 200: return 0, ""
         
         html = r.text.lower()
+        if "cloudflare" in html or "checking your browser" in html: return 0, ""
+        
         score = 0
         tags_trouves = []
         
-        # 1. Analyse de la thématique globale (Issu du Code 1)
-        for mot in MOTS_STREAM:
-            if mot in html:
-                score += 1
-                break # On ajoute le point 1 seule fois si c'est bien un site de stream
-                
-        if "iframe" in html or "video" in html or "player" in html:
-            score += 2
-        
-        # 2. Analyse précise Qualité/Langue (Issu du Code 2)
+        # Le Test d'Authenticité Ultime (Doit contenir du texte ET un lecteur vidéo)
+        a_du_streaming = any(mot in html for mot in MOTS_STREAM)
+        a_des_lecteurs = any(lecteur in html for lecteur in LECTEURS_VIDEO)
+
+        if not a_du_streaming or not a_des_lecteurs:
+            return 0, ""
+            
+        score += 3 # Le site est officiellement certifié comme plateforme de streaming
+
+        # Évaluation de la Qualité (Langue / Résolution)
         if "vf" in html or "français" in html or "francais" in html:
             score += 3
             tags_trouves.append("VF")
+            
         if "vostfr" in html or "vost" in html:
             score += 1
             tags_trouves.append("VOSTFR")
@@ -88,28 +89,24 @@ def evaluer_et_tagger_site(url):
         return 0, ""
 
 def extraire_liens_source(url_source):
-    """Extraction surpuissante (DOM + Regex)"""
     liens_valides = set()
     try:
         r = session.get(url_source, headers=HEADERS, timeout=15)
         soup = BeautifulSoup(r.text, "html.parser")
-        
-        # Extraction via balises <a>
         for a in soup.find_all("a", href=True):
             lien = a["href"].strip()
             if url_valide(lien): liens_valides.add(lien)
             
-        # Extraction via Regex pour les liens cachés dans le texte brut
         motif_url = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
         liens_texte = re.findall(motif_url, r.text)
         for l in liens_texte:
             if url_valide(l): liens_valides.add(l)
     except Exception as e:
-        print(f"Erreur scan {url_source}: {e}")
+        pass
     return liens_valides
 
 def main():
-    print("--- Démarrage du Crawler Élite Fusionné ---")
+    print("--- Démarrage du Crawler Élite (Filtre Vrai Stream Exigeant) ---")
     existants = recuperer_sites_existants()
     domaines_vus = set()
     nouveaux_sites_data = []
@@ -118,11 +115,11 @@ def main():
         with open("sources.txt", "r") as f:
             sources = [s.strip() for s in f if s.strip() and s.startswith('http')]
     except FileNotFoundError:
-        print("Erreur : sources.txt introuvable.")
+        print("Erreur : Fichier sources.txt introuvable.")
         return
 
     for source in sources:
-        print(f"\nRecherche dans : {source}")
+        print(f"\nAnalyse de la source : {source}")
         liens_trouves = extraire_liens_source(source)
         
         for lien in liens_trouves:
@@ -133,7 +130,7 @@ def main():
             score, tags = evaluer_et_tagger_site(lien)
             if score >= SCORE_MINIMUM:
                 nom_propre = dom.replace('www.', '').capitalize()
-                print(f"  [Top Qualité] {nom_propre} | {tags} | Score: {score}")
+                print(f"  [Qualité Validée] {nom_propre} | Tags: {tags} | Score: {score}")
                 
                 nouveaux_sites_data.append({
                     "nom": nom_propre,
@@ -145,7 +142,7 @@ def main():
             if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES: break
         
         if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES: break
-        time.sleep(1) # Politesse réseau entre les sources
+        time.sleep(1)
 
     if nouveaux_sites_data:
         print(f"\nEnvoi de {len(nouveaux_sites_data)} pépites au Sheet...")
@@ -156,7 +153,7 @@ def main():
         except Exception as e:
             print(f"Erreur d'envoi : {e}")
     else:
-        print("\nAucun site n'a réussi le test de qualité aujourd'hui.")
+        print("\nAucun nouveau site de qualité trouvé aujourd'hui.")
 
 if __name__ == "__main__":
     main()

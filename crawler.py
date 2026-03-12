@@ -8,7 +8,7 @@ from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 
 # --- CONFIGURATION EN BRUT ---
-API_BASE_URL = "Thttps://script.google.com/macros/s/AKfycbyhXWiqjOZ--EAM0mItqB9-Jh0wyG28iKYN7-Nz61dxKSpDFhqmrb2swXjL0OxK4FVGjA/exec"
+API_BASE_URL = "https://script.google.com/macros/s/AKfycbyhXWiqjOZ--EAM0mItqB9-Jh0wyG28iKYN7-Nz61dxKSpDFhqmrb2swXjL0OxK4FVGjA/exec"
 WEBHOOK_TOKEN = "MonSuperTokenSecret2026"
 
 MAX_SITES_ENVOYES = 20

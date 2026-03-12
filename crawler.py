@@ -8,22 +8,15 @@ from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 
 # --- CONFIGURATION EN BRUT ---
-API_BASE_URL = "url google script"
-WEBHOOK_TOKEN = "mdp"
+API_BASE_URL = "TON_URL_GOOGLE_SCRIPT_ICI"
+WEBHOOK_TOKEN = "MonSuperTokenSecret2026"
 
-# Paramètres de Chasse
 MAX_SITES_ENVOYES = 20
-SCORE_MINIMUM = 5  # Un site doit avoir des mots comme 'streaming' ou 'vf' pour être accepté
+SCORE_MINIMUM = 5  # Exige au moins VF (3 pts) + HD (2 pts)
 
-# Listes de filtrage intelligent
 MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix']
-MOTS_STREAM = ['stream','film','serie','anime','episode','vostfr','vf','watch','movie','streaming']
-
-# Extensions de domaines autorisées (inclut les TLD classiques et ceux fréquents dans le streaming)
-EXTENSIONS_AUTORISEES = [
-    '.com', '.net', '.org', '.lol', '.xyz', '.site', '.tv', '.me', '.plus', '.best',
-    '.to', '.is', '.cc', '.sx', '.pe', '.ch', '.ws', '.ru', '.io', '.sh', '.ag', '.vip', '.pro'
-]
+MOTS_STREAM = ['stream','film','serie','anime','episode','watch','movie','streaming']
+EXTENSIONS_AUTORISEES = ['.com', '.net', '.org', '.lol', '.xyz', '.site', '.tv', '.me', '.plus', '.best', '.to', '.is', '.cc', '.sx', '.pe', '.ch', '.ws', '.ru', '.io', '.sh', '.ag', '.vip', '.pro']
 
 # --- CONFIGURATION RÉSEAU ROBUSTE ---
 session = requests.Session()
@@ -40,7 +33,6 @@ def obtenir_domaine(url):
         return ""
 
 def recuperer_sites_existants():
-    """Télécharge la base actuelle pour éviter les doublons"""
     try:
         r = session.get(API_BASE_URL, timeout=10)
         data = r.json()
@@ -51,79 +43,76 @@ def recuperer_sites_existants():
     return set()
 
 def url_valide(url):
-    """Vérifie si l'URL n'est pas dans la liste noire et possède une extension valide"""
-    if not url or not url.startswith("http"):
-        return False
-        
+    if not url or not url.startswith("http"): return False
     domaine = obtenir_domaine(url).lower()
-    
-    # Vérifie si l'extension du domaine est dans la liste blanche
-    if not any(domaine.endswith(ext) for ext in EXTENSIONS_AUTORISEES):
-        return False
-        
-    # Vérifie l'absence de mots interdits
+    if not any(domaine.endswith(ext) for ext in EXTENSIONS_AUTORISEES): return False
     url_lower = url.lower()
     for mot in MOTS_INTERDITS:
-        if mot in url_lower:
-            return False
-            
+        if mot in url_lower: return False
     return True
 
-def evaluer_qualite_site(url):
-    """Analyse le contenu du site pour lui donner une note de pertinence"""
+def evaluer_et_tagger_site(url):
+    """Analyse le contenu du site, donne un score hybride et génère les tags"""
     try:
         r = session.get(url, headers=HEADERS, timeout=10)
-        if r.status_code != 200:
-            return 0
+        if r.status_code != 200: return 0, ""
         
         html = r.text.lower()
         score = 0
+        tags_trouves = []
         
-        # Points pour les mots clés
+        # 1. Analyse de la thématique globale (Issu du Code 1)
         for mot in MOTS_STREAM:
             if mot in html:
                 score += 1
-        
-        # Points bonus pour les lecteurs vidéo
+                break # On ajoute le point 1 seule fois si c'est bien un site de stream
+                
         if "iframe" in html or "video" in html or "player" in html:
-            score += 3
-        if "vostfr" in html or " vf " in html:
             score += 2
+        
+        # 2. Analyse précise Qualité/Langue (Issu du Code 2)
+        if "vf" in html or "français" in html or "francais" in html:
+            score += 3
+            tags_trouves.append("VF")
+        if "vostfr" in html or "vost" in html:
+            score += 1
+            tags_trouves.append("VOSTFR")
             
-        return score
+        if "1080p" in html or "720p" in html or " hd " in html or "4k" in html:
+            score += 2
+            tags_trouves.append("HD")
+            
+        tags_string = ", ".join(tags_trouves)
+        return score, tags_string
     except:
-        return 0
+        return 0, ""
 
 def extraire_liens_source(url_source):
-    """Extrait tous les liens valides d'une page source"""
+    """Extraction surpuissante (DOM + Regex)"""
     liens_valides = set()
     try:
         r = session.get(url_source, headers=HEADERS, timeout=15)
-        r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
         
         # Extraction via balises <a>
         for a in soup.find_all("a", href=True):
             lien = a["href"].strip()
-            if url_valide(lien):
-                liens_valides.add(lien)
-                
-        # Extraction via Regex (pour les liens en texte brut)
+            if url_valide(lien): liens_valides.add(lien)
+            
+        # Extraction via Regex pour les liens cachés dans le texte brut
         motif_url = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
         liens_texte = re.findall(motif_url, r.text)
         for l in liens_texte:
-            if url_valide(l):
-                liens_valides.add(l)
-                
+            if url_valide(l): liens_valides.add(l)
     except Exception as e:
         print(f"Erreur scan {url_source}: {e}")
     return liens_valides
 
 def main():
-    print("--- Démarrage du Crawler Elite ---")
+    print("--- Démarrage du Crawler Élite Fusionné ---")
     existants = recuperer_sites_existants()
     domaines_vus = set()
-    nouveaux_liens = []
+    nouveaux_sites_data = []
 
     try:
         with open("sources.txt", "r") as f:
@@ -133,42 +122,41 @@ def main():
         return
 
     for source in sources:
-        print(f"Analyse de la source : {source}")
+        print(f"\nRecherche dans : {source}")
         liens_trouves = extraire_liens_source(source)
         
         for lien in liens_trouves:
             dom = obtenir_domaine(lien)
-            
-            # 1. Éviter de scanner deux fois le même domaine durant cette session
-            if dom in domaines_vus or lien in existants:
-                continue
-            
+            if dom in domaines_vus or lien in existants: continue
             domaines_vus.add(dom)
             
-            # 2. Évaluer si c'est un vrai site de stream ou une pub/erreur
-            score = evaluer_qualite_site(lien)
+            score, tags = evaluer_et_tagger_site(lien)
             if score >= SCORE_MINIMUM:
-                print(f"  [Top Qualité] Trouvé : {lien} (Score: {score})")
-                nouveaux_liens.append(lien)
+                nom_propre = dom.replace('www.', '').capitalize()
+                print(f"  [Top Qualité] {nom_propre} | {tags} | Score: {score}")
+                
+                nouveaux_sites_data.append({
+                    "nom": nom_propre,
+                    "categorie": "Films & Séries",
+                    "url": lien,
+                    "tags": tags
+                })
             
-            if len(nouveaux_liens) >= MAX_SITES_ENVOYES:
-                break
+            if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES: break
         
-        if len(nouveaux_liens) >= MAX_SITES_ENVOYES:
-            break
-        time.sleep(1)
+        if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES: break
+        time.sleep(1) # Politesse réseau entre les sources
 
-    # Envoi final
-    if nouveaux_liens:
-        print(f"Envoi de {len(nouveaux_liens)} sites vérifiés au Google Sheet...")
+    if nouveaux_sites_data:
+        print(f"\nEnvoi de {len(nouveaux_sites_data)} pépites au Sheet...")
         url_webhook = f"{API_BASE_URL}?token={WEBHOOK_TOKEN}"
         try:
-            r = session.post(url_webhook, json={"urls": nouveaux_liens}, timeout=15)
+            r = session.post(url_webhook, json={"nouveaux_sites": nouveaux_sites_data}, timeout=15)
             print(f"Réponse serveur : {r.text}")
         except Exception as e:
-            print(f"Erreur envoi Webhook : {e}")
+            print(f"Erreur d'envoi : {e}")
     else:
-        print("Aucun nouveau site de qualité trouvé aujourd'hui.")
+        print("\nAucun site n'a réussi le test de qualité aujourd'hui.")
 
 if __name__ == "__main__":
     main()

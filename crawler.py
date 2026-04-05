@@ -1,3 +1,4 @@
+import os
 import json
 import time
 import requests
@@ -6,10 +7,11 @@ from urllib.parse import urlparse
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
+import cloudscraper # Importation du module anti-bot
 
-# --- CONFIGURATION EN BRUT ---
-API_BASE_URL = "https://script.google.com/macros/s/AKfycbyhXWiqjOZ--EAM0mItqB9-Jh0wyG28iKYN7-Nz61dxKSpDFhqmrb2swXjL0OxK4FVGjA/exec"
-WEBHOOK_TOKEN = "MonSuperTokenSecret2026"
+# --- CONFIGURATION SÉCURISÉE (Via GitHub Secrets) ---
+API_BASE_URL = os.environ.get('API_BASE_URL')
+WEBHOOK_TOKEN = os.environ.get('WEBHOOK_TOKEN')
 
 MAX_SITES_ENVOYES = 20
 SCORE_MINIMUM = 6  # Score exigeant (Garantit Vrai Stream + Qualité)
@@ -17,15 +19,16 @@ SCORE_MINIMUM = 6  # Score exigeant (Garantit Vrai Stream + Qualité)
 # Tout en minuscules impérativement pour le filtrage
 MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix','x.com','fsound','cloudflarestatus','cdn1.telesco','brave.com', 'captcha', 'bot', 'verify']
 MOTS_STREAM = ['stream','film','serie','anime','episode','watch','movie','streaming', 'saison']
-LECTEURS_VIDEO = ['iframe', 'vidoza', 'uqload', 'doodstream', 'mystream', 'uptobox', 'gounlimited', 'uptostream', 'embed']
+# Ajout des nouveaux lecteurs renforcés (jwplayer, m3u8, video...)
+LECTEURS_VIDEO = ['iframe', 'vidoza', 'uqload', 'doodstream', 'mystream', 'uptobox', 'gounlimited', 'uptostream', 'embed', 'player', '.m3u8', 'jwplayer', '<video']
 EXTENSIONS_AUTORISEES = ['.com', '.net', '.org', '.lol', '.xyz', '.site', '.tv', '.me', '.plus', '.best', '.to', '.is', '.cc', '.sx', '.pe', '.ch', '.ws', '.ru', '.io', '.sh', '.ag', '.vip', '.pro']
 
-# --- CONFIGURATION RÉSEAU ROBUSTE ---
-session = requests.Session()
+# --- CONFIGURATION RÉSEAU ROBUSTE (Cloudscraper remplace requests standard) ---
+scraper = cloudscraper.create_scraper() 
 retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
 adapter = HTTPAdapter(max_retries=retry)
-session.mount('http://', adapter)
-session.mount('https://', adapter)
+scraper.mount('http://', adapter)
+scraper.mount('https://', adapter)
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
 def obtenir_domaine(url):
@@ -34,7 +37,7 @@ def obtenir_domaine(url):
 
 def recuperer_sites_existants():
     try:
-        r = session.get(API_BASE_URL, timeout=10)
+        r = scraper.get(API_BASE_URL, timeout=10)
         data = r.json()
         if data.get("succes"): return {site["url"].strip() for site in data["donnees"]}
     except Exception as e:
@@ -52,7 +55,8 @@ def url_valide(url):
 
 def evaluer_et_tagger_site(url):
     try:
-        r = session.get(url, headers=HEADERS, timeout=10)
+        # On utilise scraper.get au lieu de requests.get pour passer Cloudflare
+        r = scraper.get(url, headers=HEADERS, timeout=10)
         if r.status_code != 200: return 0, ""
         
         html = r.text.lower()
@@ -91,7 +95,7 @@ def evaluer_et_tagger_site(url):
 def extraire_liens_source(url_source):
     liens_valides = set()
     try:
-        r = session.get(url_source, headers=HEADERS, timeout=15)
+        r = scraper.get(url_source, headers=HEADERS, timeout=15)
         soup = BeautifulSoup(r.text, "html.parser")
         for a in soup.find_all("a", href=True):
             lien = a["href"].strip()
@@ -106,9 +110,10 @@ def extraire_liens_source(url_source):
     return liens_valides
 
 def main():
-    print("--- Démarrage du Crawler Élite (Filtre Vrai Stream Exigeant) ---")
+    print("--- Démarrage du Crawler Élite (Anti-Cloudflare + Filtre Strict) ---")
     existants = recuperer_sites_existants()
     domaines_vus = set()
+    noms_vus = set() # Mémoire pour éviter les doublons de noms (ex: voiranime.to et voiranime.com)
     nouveaux_sites_data = []
 
     try:
@@ -124,12 +129,17 @@ def main():
         
         for lien in liens_trouves:
             dom = obtenir_domaine(lien)
-            if dom in domaines_vus or lien in existants: continue
+            nom_propre = dom.replace('www.', '').capitalize()
+            
+            # On vérifie qu'on n'a pas déjà ajouté ce nom avec une autre extension
+            if dom in domaines_vus or lien in existants or nom_propre.lower() in noms_vus: 
+                continue
+                
             domaines_vus.add(dom)
             
             score, tags = evaluer_et_tagger_site(lien)
             if score >= SCORE_MINIMUM:
-                nom_propre = dom.replace('www.', '').capitalize()
+                noms_vus.add(nom_propre.lower()) # On bloque ce nom pour la suite
                 print(f"  [Qualité Validée] {nom_propre} | Tags: {tags} | Score: {score}")
                 
                 nouveaux_sites_data.append({
@@ -148,7 +158,7 @@ def main():
         print(f"\nEnvoi de {len(nouveaux_sites_data)} pépites au Sheet...")
         url_webhook = f"{API_BASE_URL}?token={WEBHOOK_TOKEN}"
         try:
-            r = session.post(url_webhook, json={"nouveaux_sites": nouveaux_sites_data}, timeout=15)
+            r = scraper.post(url_webhook, json={"nouveaux_sites": nouveaux_sites_data}, timeout=15)
             print(f"Réponse serveur : {r.text}")
         except Exception as e:
             print(f"Erreur d'envoi : {e}")

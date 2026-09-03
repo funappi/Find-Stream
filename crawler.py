@@ -1,169 +1,306 @@
 import os
-import json
-import time
-import requests
 import re
-from urllib.parse import urlparse
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import time
+import cloudscraper
 from bs4 import BeautifulSoup
-import cloudscraper # Importation du module anti-bot
+from urllib.parse import urlparse
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 
-# --- CONFIGURATION SÉCURISÉE (Via GitHub Secrets) ---
-API_BASE_URL = os.environ.get('API_BASE_URL')
-WEBHOOK_TOKEN = os.environ.get('WEBHOOK_TOKEN')
+# ============================================================
+# CONFIGURATION
+# ============================================================
+API_BASE_URL = os.environ.get("API_BASE_URL")
+WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN")
 
 MAX_SITES_ENVOYES = 20
-SCORE_MINIMUM = 6  # Score exigeant (Garantit Vrai Stream + Qualité)
+SCORE_MINIMUM = 6
 
-# Tout en minuscules impérativement pour le filtrage
-MOTS_INTERDITS = ['facebook','twitter','instagram','youtube','wikipedia','t.me','google','login','signup','amazon','netflix','x.com','fsound','cloudflarestatus','cdn1.telesco','brave.com', 'captcha', 'bot', 'verify']
-MOTS_STREAM = ['stream','film','serie','anime','episode','watch','movie','streaming', 'saison']
-# Ajout des nouveaux lecteurs renforcés (jwplayer, m3u8, video...)
-LECTEURS_VIDEO = ['iframe', 'vidoza', 'uqload', 'doodstream', 'mystream', 'uptobox', 'gounlimited', 'uptostream', 'embed', 'player', '.m3u8', 'jwplayer', '<video']
-EXTENSIONS_AUTORISEES = ['.com', '.net', '.org', '.lol', '.xyz', '.site', '.tv', '.me', '.plus', '.best', '.to', '.is', '.cc', '.sx', '.pe', '.ch', '.ws', '.ru', '.io', '.sh', '.ag', '.vip', '.pro']
+# ============================================================
+# FILTRES & RÈGLES D'ANALYSE
+# ============================================================
+MOTS_INTERDITS = [
+    "facebook", "twitter", "instagram", "youtube", "wikipedia", "t.me",
+    "google", "login", "signup", "amazon", "netflix", "x.com", "fsound",
+    "cloudflarestatus", "cdn1.telesco", "brave.com", "captcha", "bot", "verify"
+]
 
-# --- CONFIGURATION RÉSEAU ROBUSTE (Cloudscraper remplace requests standard) ---
-scraper = cloudscraper.create_scraper() 
-retry = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+MOTS_STREAM = [
+    "stream", "film", "serie", "anime", "episode",
+    "watch", "movie", "streaming", "saison"
+]
+
+LECTEURS_VIDEO = [
+    "iframe", "vidoza", "uqload", "doodstream", "mystream", "uptobox",
+    "gounlimited", "uptostream", "embed", "player", ".m3u8", "jwplayer", "<video"
+]
+
+EXTENSIONS_AUTORISEES = [
+    ".com", ".net", ".org", ".lol", ".xyz", ".site", ".tv", ".me",
+    ".plus", ".best", ".to", ".is", ".cc", ".sx", ".pe", ".ch",
+    ".ws", ".ru", ".io", ".sh", ".ag", ".vip", ".pro"
+]
+
+# ============================================================
+# CONFIGURATION CLIENT HTTP
+# ============================================================
+scraper = cloudscraper.create_scraper()
+
+retry = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET", "POST"]
+)
+
 adapter = HTTPAdapter(max_retries=retry)
-scraper.mount('http://', adapter)
-scraper.mount('https://', adapter)
-HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+scraper.mount("http://", adapter)
+scraper.mount("https://", adapter)
 
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,*/*;q=0.8"
+    ),
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+}
+
+# ============================================================
+# OUTILS & NORMALISATION
+# ============================================================
 def obtenir_domaine(url):
-    try: return urlparse(url).netloc
-    except: return ""
-
-def recuperer_sites_existants():
+    """Extrait le nom de domaine en minuscules."""
     try:
-        r = scraper.get(API_BASE_URL, timeout=10)
-        data = r.json()
-        if data.get("succes"): return {site["url"].strip() for site in data["donnees"]}
-    except Exception as e:
-        print(f"Note : Base de données inaccessible ({e})")
-    return set()
+        return urlparse(url).netloc.lower()
+    except Exception:
+        return ""
+
+def normaliser_url(url):
+    """Nettoie les espaces et les ponctuations résiduelles en fin d'URL."""
+    if not url:
+        return ""
+    url = url.strip()
+    return re.sub(r"[)\].,;!?'\"]+$", "", url)
 
 def url_valide(url):
-    if not url or not url.startswith("http"): return False
-    domaine = obtenir_domaine(url).lower()
-    if not any(domaine.endswith(ext) for ext in EXTENSIONS_AUTORISEES): return False
-    url_lower = url.lower()
-    for mot in MOTS_INTERDITS:
-        if mot in url_lower: return False
+    """Valide l'URL selon le format, l'extension et les mots interdits."""
+    if not url:
+        return False
+    url_propre = normaliser_url(url)
+    if not url_propre.startswith(("http://", "https://")):
+        return False
+
+    domaine = obtenir_domaine(url_propre)
+    if not domaine or not any(domaine.endswith(ext) for ext in EXTENSIONS_AUTORISEES):
+        return False
+
+    url_lower = url_propre.lower()
+    if any(mot in url_lower for mot in MOTS_INTERDITS):
+        return False
+
     return True
 
-def evaluer_et_tagger_site(url):
+# ============================================================
+# INTERACTION API / BASE EXISTANTE
+# ============================================================
+def recuperer_sites_existants():
+    """Charge les URLs déjà indexées dans le backend."""
     try:
-        # On utilise scraper.get au lieu de requests.get pour passer Cloudflare
+        r = scraper.get(API_BASE_URL, headers=HEADERS, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        if data.get("succes"):
+            existants = {
+                site["url"].strip()
+                for site in data.get("donnees", [])
+                if isinstance(site, dict) and site.get("url")
+            }
+            print(f"  → {len(existants)} sites déjà répertoriés dans la base.")
+            return existants
+        print("  → Note : L'API a répondu mais avec 'succes' = False.")
+    except Exception as e:
+        print(f"  → Note : Base de données inaccessible ({e})")
+    return set()
+
+# ============================================================
+# ANALYSE ET ÉVALUATION DU SITE
+# ============================================================
+def evaluer_et_tagger_site(url):
+    """Évalue la pertinence streaming, la langue et la résolution."""
+    try:
         r = scraper.get(url, headers=HEADERS, timeout=10)
-        if r.status_code != 200: return 0, ""
-        
+        if r.status_code != 200:
+            return 0, ""
+
         html = r.text.lower()
-        if "cloudflare" in html or "checking your browser" in html: return 0, ""
-        
-        score = 0
-        tags_trouves = []
-        
-        # Le Test d'Authenticité Ultime (Doit contenir du texte ET un lecteur vidéo)
+        if "cloudflare" in html or "checking your browser" in html:
+            return 0, ""
+
         a_du_streaming = any(mot in html for mot in MOTS_STREAM)
         a_des_lecteurs = any(lecteur in html for lecteur in LECTEURS_VIDEO)
 
         if not a_du_streaming or not a_des_lecteurs:
             return 0, ""
-            
-        score += 3 # Le site est officiellement certifié comme plateforme de streaming
 
-        # Évaluation de la Qualité (Langue / Résolution)
-        if "vf" in html or "français" in html or "francais" in html:
+        score = 3
+        tags_trouves = []
+
+        # Détection Langue
+        if any(kw in html for kw in ["vf", "français", "francais"]):
             score += 3
             tags_trouves.append("VF")
-            
-        if "vostfr" in html or "vost" in html:
+
+        if any(kw in html for kw in ["vostfr", "vost"]):
             score += 1
             tags_trouves.append("VOSTFR")
-            
-        if "1080p" in html or "720p" in html or " hd " in html or "4k" in html:
+
+        # Détection Résolution
+        if any(kw in html for kw in ["1080p", "720p", " hd ", "4k"]):
             score += 2
             tags_trouves.append("HD")
-            
-        tags_string = ", ".join(tags_trouves)
-        return score, tags_string
-    except:
+
+        return score, ", ".join(tags_trouves)
+    except Exception:
         return 0, ""
 
+# ============================================================
+# EXTRACTION & CHARGEMENT
+# ============================================================
 def extraire_liens_source(url_source):
+    """Extrait les URLs via balises <a> et regex brute dans le document."""
     liens_valides = set()
     try:
         r = scraper.get(url_source, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            print(f"  → Source ignorée (HTTP {r.status_code})")
+            return liens_valides
+
         soup = BeautifulSoup(r.text, "html.parser")
         for a in soup.find_all("a", href=True):
-            lien = a["href"].strip()
-            if url_valide(lien): liens_valides.add(lien)
-            
-        motif_url = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
-        liens_texte = re.findall(motif_url, r.text)
-        for l in liens_texte:
-            if url_valide(l): liens_valides.add(l)
+            lien = normaliser_url(a["href"])
+            if url_valide(lien):
+                liens_valides.add(lien)
+
+        motif_url = r'https?://[^\s<>"\'\]]+|www\.[^\s<>"\'\]]+'
+        for brut in re.findall(motif_url, r.text):
+            lien = normaliser_url(brut)
+            if url_valide(lien):
+                liens_valides.add(lien)
+
     except Exception as e:
-        pass
+        print(f"  → Erreur sur la source {url_source} : {e}")
+
     return liens_valides
 
-def main():
-    print("--- Démarrage du Crawler Élite (Anti-Cloudflare + Filtre Strict) ---")
-    existants = recuperer_sites_existants()
-    domaines_vus = set()
-    noms_vus = set() # Mémoire pour éviter les doublons de noms (ex: voiranime.to et voiranime.com)
-    nouveaux_sites_data = []
-
+def charger_sources():
+    """Charge le fichier sources.txt avec déduplication conservant l'ordre."""
     try:
-        with open("sources.txt", "r") as f:
-            sources = [s.strip() for s in f if s.strip() and s.startswith('http')]
+        with open("sources.txt", "r", encoding="utf-8") as f:
+            sources = []
+            for ligne in f:
+                s = normaliser_url(ligne)
+                if s and s.startswith(("http://", "https://")):
+                    sources.append(s)
+            return list(dict.fromkeys(sources))
     except FileNotFoundError:
-        print("Erreur : Fichier sources.txt introuvable.")
+        print("ERREUR : Fichier sources.txt introuvable.")
+        return []
+    except Exception as e:
+        print(f"ERREUR lors de la lecture de sources.txt : {e}")
+        return []
+
+def envoyer_nouveaux_sites(nouveaux_sites_data):
+    """Transmet la charge utile validée au webhook API."""
+    if not nouveaux_sites_data:
         return
 
-    for source in sources:
-        print(f"\nAnalyse de la source : {source}")
+    url_webhook = f"{API_BASE_URL}?token={WEBHOOK_TOKEN}"
+    try:
+        r = scraper.post(
+            url_webhook,
+            headers={**HEADERS, "Content-Type": "application/json"},
+            json={"nouveaux_sites": nouveaux_sites_data},
+            timeout=15
+        )
+        print(f"  → HTTP {r.status_code} | Réponse serveur : {r.text}")
+    except Exception as e:
+        print(f"  → ERREUR lors de l'envoi : {e}")
+
+# ============================================================
+# EXÉCUTION PRINCIPALE
+# ============================================================
+def main():
+    print("=" * 60)
+    print("  Crawler FindStream — V-Unified")
+    print("=" * 60)
+
+    if not API_BASE_URL or not WEBHOOK_TOKEN:
+        print("ERREUR CRITIQUE : API_BASE_URL ou WEBHOOK_TOKEN non défini(s).")
+        return
+
+    existants = recuperer_sites_existants()
+    domaines_vus = set()
+    noms_vus = set()
+    nouveaux_sites_data = []
+
+    sources = charger_sources()
+    if not sources:
+        print("Aucune source valide à analyser.")
+        return
+
+    print(f"\n→ {len(sources)} sources uniques chargées.")
+
+    for index, source in enumerate(sources, start=1):
+        print(f"\n[{index}/{len(sources)}] Analyse : {source}")
         liens_trouves = extraire_liens_source(source)
-        
+        print(f"  → {len(liens_trouves)} liens candidats détectés.")
+
         for lien in liens_trouves:
             dom = obtenir_domaine(lien)
-            nom_propre = dom.replace('www.', '').capitalize()
-            
-            # On vérifie qu'on n'a pas déjà ajouté ce nom avec une autre extension
-            if dom in domaines_vus or lien in existants or nom_propre.lower() in noms_vus: 
+            if not dom:
                 continue
-                
+
+            nom_propre = dom.replace("www.", "").capitalize()
+
+            # Évite les doublons de domaine, d'URL et de nom de marque
+            if dom in domaines_vus or lien in existants or nom_propre.lower() in noms_vus:
+                continue
+
             domaines_vus.add(dom)
-            
+
             score, tags = evaluer_et_tagger_site(lien)
             if score >= SCORE_MINIMUM:
-                noms_vus.add(nom_propre.lower()) # On bloque ce nom pour la suite
-                print(f"  [Qualité Validée] {nom_propre} | Tags: {tags} | Score: {score}")
-                
+                noms_vus.add(nom_propre.lower())
+                print(f"  [QUALITÉ VALIDÉE] {nom_propre} | Tags: {tags} | Score: {score}")
+
                 nouveaux_sites_data.append({
                     "nom": nom_propre,
                     "categorie": "Films & Séries",
                     "url": lien,
                     "tags": tags
                 })
-            
-            if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES: break
-        
-        if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES: break
+
+            if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES:
+                break
+
+        if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES:
+            print(f"\n→ Limite de {MAX_SITES_ENVOYES} sites atteinte.")
+            break
+
         time.sleep(1)
 
+    print("\n" + "=" * 60)
     if nouveaux_sites_data:
-        print(f"\nEnvoi de {len(nouveaux_sites_data)} pépites au Sheet...")
-        url_webhook = f"{API_BASE_URL}?token={WEBHOOK_TOKEN}"
-        try:
-            r = scraper.post(url_webhook, json={"nouveaux_sites": nouveaux_sites_data}, timeout=15)
-            print(f"Réponse serveur : {r.text}")
-        except Exception as e:
-            print(f"Erreur d'envoi : {e}")
+        print(f"→ {len(nouveaux_sites_data)} nouveaux sites à injecter.")
+        envoyer_nouveaux_sites(nouveaux_sites_data)
     else:
-        print("\nAucun nouveau site de qualité trouvé aujourd'hui.")
+        print("→ Aucun nouveau site qualifié trouvé.")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main()

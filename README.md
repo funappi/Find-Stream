@@ -25,7 +25,7 @@
 - [Fonctionnalités clés](#-fonctionnalités-clés)
 - [Architecture & Pipeline Automatisé](#-architecture--pipeline-automatisé)
 - [Structure du Projet](#-structure-du-projet)
-- [Sécurité & Anti-Contournement Bot](#-sécurité--anti-contournement-bot)
+- [Sécurité & Secrets](#-sécurité--secrets)
 - [Configuration & Déploiement](#-configuration--déploiement)
 - [Design System & Ergonomie UX](#-design-system--ergonomie-ux)
 
@@ -88,3 +88,50 @@ Le projet s'appuie sur une séparation stricte des responsabilités entre la col
   │  - Tri A-Z (Actifs) + Relégation des Inactifs (Bas)      │
   │  - Switch Layout Bento / Long Cards                      │
   └──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📂 Structure du Projet
+
+```text
+.
+├── crawler.py                       # Crawler Python : collecte, scoring, envoi par lots
+├── sources.txt                      # Pages à analyser (une URL par ligne)
+├── index.html                       # Dashboard (déployé sur Netlify)
+└── .github/workflows/crawler.yml    # Exécution quotidienne + lancement manuel
+```
+
+> **Note :** le script Google Apps Script (audit de santé, auto-remplacement, API `doGet` et webhook) n'est pas versionné dans ce dépôt. Y ajouter une copie (par exemple dans `apps-script/`) évite de dépendre d'une unique version dans l'éditeur Google.
+
+---
+
+## 🔐 Sécurité & Secrets
+
+- `API_BASE_URL` et `WEBHOOK_TOKEN` sont lus dans les **secrets GitHub** ; ils n'apparaissent jamais dans le code.
+- Le webhook reçoit le token en paramètre d'URL (`?token=`), ce qui est pratique avec Apps Script mais peut laisser le token dans des journaux : le régénérer en cas de doute.
+- Filtrage des candidats : les réseaux sociaux, CDN et services connus sont écartés d'après le **nom de domaine** ; les pages de connexion, de captcha ou de vérification sont écartées d'après le **chemin** de l'URL.
+- Le crawler envoie ses résultats **par lots de 5** et s'arrête proprement après 8 minutes, avant le timeout de 10 minutes du workflow : une interruption ne fait pas perdre le travail déjà fait.
+
+---
+
+## ⚙️ Configuration & Déploiement
+
+1. Dans GitHub : *Settings → Secrets and variables → Actions*, créer `API_BASE_URL` (URL du déploiement Apps Script, qui répond en `GET` avec `{succes, donnees}` et reçoit le `POST` `{nouveaux_sites}`) et `WEBHOOK_TOKEN`.
+2. Le workflow `crawler.yml` tourne chaque jour à **22h00 UTC** (Python 3.11, timeout 10 min) et peut être lancé à la main (*Actions → Run workflow*).
+3. Lancement local :
+   ```bash
+   pip install requests beautifulsoup4 lxml cloudscraper
+   API_BASE_URL="..." WEBHOOK_TOKEN="..." python crawler.py
+   ```
+4. Réglages dans `crawler.py` : `MAX_SITES_ENVOYES` (20), `SCORE_MINIMUM` (6), `TAILLE_LOT` (5), `BUDGET_SECONDES` (480).
+5. Le dashboard est un fichier statique : l'URL de l'API est la constante `API_URL` en haut du script de `index.html`.
+
+---
+
+## 🎨 Design System & Ergonomie UX
+
+- **Tailwind CSS** chargé par CDN, complété par du CSS maison ; aucun framework JS.
+- **Thème sombre par défaut** (fond noir) avec bascule clair/sombre, mémorisée dans le `localStorage` (`findstream_theme`).
+- **Deux vues** (grille *Bento* ou liste), favoris locaux (`findstream_favoris`) et cache local des données pour limiter les appels à l'API.
+- Sites hors ligne relégués en bas de liste, sites actifs triés de A à Z.

@@ -15,15 +15,24 @@ WEBHOOK_TOKEN = os.environ.get("WEBHOOK_TOKEN")
 
 MAX_SITES_ENVOYES = 20
 SCORE_MINIMUM = 6
+TAILLE_LOT = 5                 # envoi au webhook tous les 5 sites qualifiés
+BUDGET_SECONDES = 8 * 60       # on s'arrête proprement avant le timeout de 10 min du workflow
 
 # ============================================================
 # FILTRES & RÈGLES D'ANALYSE
 # ============================================================
-MOTS_INTERDITS = [
-    "facebook", "twitter", "instagram", "youtube", "wikipedia", "t.me",
-    "google", "login", "signup", "amazon", "netflix", "x.com", "fsound",
-    "cloudflarestatus", "cdn1.telesco", "brave.com", "captcha", "bot", "verify"
+# Noms de marque cherchés dans le nom de domaine uniquement.
+MARQUES_INTERDITES = [
+    "facebook", "twitter", "instagram", "youtube", "wikipedia",
+    "google", "amazon", "netflix", "fsound", "cloudflarestatus", "telesco"
 ]
+
+# Domaines exacts (et leurs sous-domaines). Un test de sous-chaîne sur toute l'URL
+# rejetait à tort des domaines légitimes ("t.me" dans "hot.me", "x.com" dans "max.com").
+DOMAINES_INTERDITS = ["t.me", "x.com", "brave.com"]
+
+# Mots cherchés dans le chemin et la requête (pages de connexion, captcha, ...).
+MOTS_INTERDITS_CHEMIN = ["login", "signup", "captcha", "verify", "/bot"]
 
 MOTS_STREAM = [
     "stream", "film", "serie", "anime", "episode",
@@ -87,6 +96,13 @@ def normaliser_url(url):
     url = url.strip()
     return re.sub(r"[)\].,;!?'\"]+$", "", url)
 
+def domaine_interdit(domaine):
+    """Rejette réseaux sociaux, CDN et services connus d'après le nom de domaine seul."""
+    domaine = domaine.split(":")[0]
+    if any(domaine == d or domaine.endswith("." + d) for d in DOMAINES_INTERDITS):
+        return True
+    return any(marque in domaine for marque in MARQUES_INTERDITES)
+
 def url_valide(url):
     """Valide l'URL selon le format, l'extension et les mots interdits."""
     if not url:
@@ -99,8 +115,12 @@ def url_valide(url):
     if not domaine or not any(domaine.endswith(ext) for ext in EXTENSIONS_AUTORISEES):
         return False
 
-    url_lower = url_propre.lower()
-    if any(mot in url_lower for mot in MOTS_INTERDITS):
+    if domaine_interdit(domaine):
+        return False
+
+    parsed = urlparse(url_propre)
+    chemin = (parsed.path + "?" + parsed.query).lower()
+    if any(mot in chemin for mot in MOTS_INTERDITS_CHEMIN):
         return False
 
     return True
@@ -215,9 +235,12 @@ def charger_sources():
         return []
 
 def envoyer_nouveaux_sites(nouveaux_sites_data):
-    """Transmet la charge utile validée au webhook API."""
+    """Transmet la charge utile validée au webhook API.
+
+    Retourne le nombre de sites réellement envoyés (0 en cas d'échec : l'appelant
+    pourra les renvoyer avec le lot suivant)."""
     if not nouveaux_sites_data:
-        return
+        return 0
 
     url_webhook = f"{API_BASE_URL}?token={WEBHOOK_TOKEN}"
     try:
@@ -228,8 +251,14 @@ def envoyer_nouveaux_sites(nouveaux_sites_data):
             timeout=15
         )
         print(f"  → HTTP {r.status_code} | Réponse serveur : {r.text}")
+        return len(nouveaux_sites_data) if 200 <= r.status_code < 300 else 0
     except Exception as e:
         print(f"  → ERREUR lors de l'envoi : {e}")
+        return 0
+
+def budget_depasse(debut):
+    """Vrai quand le temps alloué au run est écoulé."""
+    return time.monotonic() - debut > BUDGET_SECONDES
 
 # ============================================================
 # EXÉCUTION PRINCIPALE
@@ -243,10 +272,13 @@ def main():
         print("ERREUR CRITIQUE : API_BASE_URL ou WEBHOOK_TOKEN non défini(s).")
         return
 
+    debut = time.monotonic()
     existants = recuperer_sites_existants()
+    domaines_existants = {obtenir_domaine(u).removeprefix("www.") for u in existants}
     domaines_vus = set()
     noms_vus = set()
     nouveaux_sites_data = []
+    envoyes = 0  # nombre de sites de nouveaux_sites_data déjà transmis au webhook
 
     sources = charger_sources()
     if not sources:
@@ -261,14 +293,19 @@ def main():
         print(f"  → {len(liens_trouves)} liens candidats détectés.")
 
         for lien in liens_trouves:
+            if budget_depasse(debut):
+                break
+
             dom = obtenir_domaine(lien)
             if not dom:
                 continue
 
             nom_propre = dom.replace("www.", "").capitalize()
 
-            # Évite les doublons de domaine, d'URL et de nom de marque
-            if dom in domaines_vus or lien in existants or nom_propre.lower() in noms_vus:
+            # Évite les doublons de domaine (déjà en base ou déjà vus), d'URL et de nom de marque
+            if (dom in domaines_vus or lien in existants
+                    or dom.removeprefix("www.") in domaines_existants
+                    or nom_propre.lower() in noms_vus):
                 continue
 
             domaines_vus.add(dom)
@@ -285,6 +322,10 @@ def main():
                     "tags": tags
                 })
 
+                # Envoi par lots : un timeout du job ne fait plus perdre toute la nuit.
+                if len(nouveaux_sites_data) - envoyes >= TAILLE_LOT:
+                    envoyes += envoyer_nouveaux_sites(nouveaux_sites_data[envoyes:])
+
             if len(nouveaux_sites_data) >= MAX_SITES_ENVOYES:
                 break
 
@@ -292,12 +333,17 @@ def main():
             print(f"\n→ Limite de {MAX_SITES_ENVOYES} sites atteinte.")
             break
 
+        if budget_depasse(debut):
+            print(f"\n→ Budget de temps ({BUDGET_SECONDES // 60} min) atteint : arrêt propre.")
+            break
+
         time.sleep(1)
 
     print("\n" + "=" * 60)
+    if len(nouveaux_sites_data) > envoyes:
+        envoyes += envoyer_nouveaux_sites(nouveaux_sites_data[envoyes:])
     if nouveaux_sites_data:
-        print(f"→ {len(nouveaux_sites_data)} nouveaux sites à injecter.")
-        envoyer_nouveaux_sites(nouveaux_sites_data)
+        print(f"→ {envoyes}/{len(nouveaux_sites_data)} nouveaux sites injectés.")
     else:
         print("→ Aucun nouveau site qualifié trouvé.")
     print("=" * 60)

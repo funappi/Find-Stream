@@ -135,3 +135,11 @@ Le projet s'appuie sur une séparation stricte des responsabilités entre la col
 - **Thème sombre par défaut** (fond noir) avec bascule clair/sombre, mémorisée dans le `localStorage` (`findstream_theme`).
 - **Deux vues** (grille *Bento* ou liste), favoris locaux (`findstream_favoris`) et cache local des données pour limiter les appels à l'API.
 - Sites hors ligne relégués en bas de liste, sites actifs triés de A à Z.
+
+---
+
+## 📜 Licence
+
+Ce projet est distribué sous la licence [PolyForm Noncommercial 1.0.0](LICENSE) : utilisation, modification et partage libres pour tout **usage non commercial**.
+
+**Usage commercial : contacte-moi pour une licence séparée** — [Funappi](https://github.com/funappi).

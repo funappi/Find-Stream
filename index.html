@@ -75,6 +75,9 @@
             #theme-light:checked ~ .pill-cursor { transform: translateX(0); }
             #theme-dark:checked ~ .pill-cursor { transform: translateX(42px); }
         }
+        .credit { text-align: center; font-size: 12px; opacity: .65; padding: 16px 0 8px; }
+        .credit a { color: inherit; text-decoration: underline; }
+        .credit a:hover { opacity: 1; }
     </style>
 </head>
 <body class="flex min-h-screen">
@@ -186,6 +189,7 @@
                 </div>
                 
                 <div id="scroll-sentinel" class="h-10 mt-4"></div>
+                <footer class="credit">Made by <a href="https://github.com/orgs/funappi/repositories" target="_blank" rel="noopener noreferrer">Funappi</a></footer>
             </div>
         </main>
     </div>

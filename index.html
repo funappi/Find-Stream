@@ -81,6 +81,8 @@
         .credit a:hover, .credit a:focus-visible { color: #a78bfa; text-shadow: 0 0 12px rgba(139, 92, 246, .6); }
         body.light-mode .credit { color: #6b7280; }
         body.light-mode .credit a:hover, body.light-mode .credit a:focus-visible { color: #5b21b6; text-shadow: 0 0 12px rgba(124, 58, 237, .35); }
+        /* Mobile / tablette / tactile : couleur du projet en permanence */
+        @media (hover: none), (max-width: 1024px) { .credit a { color: #a78bfa; text-shadow: 0 0 12px rgba(139, 92, 246, .6); } body.light-mode .credit a { color: #5b21b6; text-shadow: 0 0 12px rgba(124, 58, 237, .35); } }
     </style>
 </head>
 <body class="flex min-h-screen">

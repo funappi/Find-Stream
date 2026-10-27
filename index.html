@@ -75,9 +75,13 @@
             #theme-light:checked ~ .pill-cursor { transform: translateX(0); }
             #theme-dark:checked ~ .pill-cursor { transform: translateX(42px); }
         }
-        .credit { text-align: center; font-size: 12px; opacity: .65; padding: 16px 0 8px; }
-        .credit a { color: inherit; text-decoration: underline; }
-        .credit a:hover { opacity: 1; }
+        /* Crédit : texte discret, lien dans le violet de l'appli avec un léger effet au survol */
+        .credit { text-align: center; font-size: 12px; padding: 16px 0 8px; color: #9ca3af; }
+        .credit a { position: relative; z-index: 1; display: inline-block; padding: 6px 4px; color: #8b5cf6; font-weight: 700; text-decoration: none; transition: color .2s, text-shadow .2s; }
+        .credit a:hover, .credit a:focus-visible { color: #a78bfa; text-decoration: underline; text-shadow: 0 0 12px rgba(139, 92, 246, .6); }
+        body.light-mode .credit { color: #6b7280; }
+        body.light-mode .credit a { color: #7c3aed; }
+        body.light-mode .credit a:hover, body.light-mode .credit a:focus-visible { color: #5b21b6; text-shadow: 0 0 12px rgba(124, 58, 237, .35); }
     </style>
 </head>
 <body class="flex min-h-screen">

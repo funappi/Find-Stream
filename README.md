@@ -17,16 +17,24 @@
 
 </div>
 
+<p align="center">
+  <img src="docs/apercu.png" alt="Tableau de bord FindStream en thème sombre : sites classés par catalogue avec leur statut" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/clair.png" alt="Thème clair" width="600">
+</p>
+
 ---
 
 ## 📖 Sommaire
 
 - [À propos du projet](#-à-propos-du-projet)
 - [Fonctionnalités clés](#-fonctionnalités-clés)
-- [Architecture & Pipeline Automatisé](#-architecture--pipeline-automatisé)
+- [Architecture & Pipeline Automatisé](#️-architecture--pipeline-automatisé)
 - [Structure du Projet](#-structure-du-projet)
 - [Sécurité & Secrets](#-sécurité--secrets)
-- [Configuration & Déploiement](#-configuration--déploiement)
+- [Configuration & Déploiement](#️-configuration--déploiement)
 - [Design System & Ergonomie UX](#-design-system--ergonomie-ux)
 
 ---
